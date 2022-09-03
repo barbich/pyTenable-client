@@ -6,6 +6,8 @@ authors = ["seb <seb@barbich.net>"]
 
 [tool.poetry.dependencies]
 python = "^3.10"
+tenable = {url = "https://github.com/barbich/pyTenable/releases/download/1.4.7was1/tenable-1.4.7.1-py3-none-any.whl"}
+fire = "^0.4.0"
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"
@@ -13,3 +15,6 @@ pytest = "^5.2"
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+pytenable_client = "pytenable_client.client:cli"
