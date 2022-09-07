@@ -2,13 +2,13 @@
 # Need to install requests package for python
 # easy_install requests
 import fire
-import csv
-import datetime
-import gzip
-import itertools
+import logging
+
 import sys
+from fire import parser
 import re
 from pprint import pprint as pp
+from pprint import pformat
 import json
 
 try:
@@ -17,8 +17,7 @@ except:
     from configparser import ConfigParser
 
 from tenable.io import TenableIO
-from tenable.io.wasscan import WasScansAPI
-from tenable.io.scans import ScansAPI
+from tenable.errors import UnexpectedValueError, FileDownloadError
 
 # <refactor import="refactor/code_inspect_start.py">
 # improved debugging
@@ -35,52 +34,57 @@ def lineno():
 global_error = 0
 # </refactor>
 
-description = """Simple client to the WAS API v2 from tenable build on top of the library.
-"""
-
-epilog = """
-"""
-
 """
 Sample usage:
-python was_client.py --config ~/.sectool.config  --debug --listwasconfigs --outfile listwasconfigs.json
+
+# List all users of the tio
+pytenable_client tio --config ../../.sectool.config --noproxy - users list -- --prettyprint --outfile users.json
+
+# List all configured wasscans
+pytenable_client tio --config ../../.sectool.config --noproxy - wasscans list -- --prettyprint --outfile wasscans.json
+
+# List WAS scan scans
 export WASCONFIG=xxx-xxx-xxx
-python was_client.py --config ~/.sectool.config  --debug --listwasscans --wasconfigid $WASCONFIGID --outfile listwasscans.json
+pytenable_client tio --config ../../.sectool.config --noproxy - wasscans history $WASCONFIGID -- --prettyprint
+
+# Get the status of a scan. 
 export WASSCANID=yyy-yyy-yyy
-python was_client.py --config ~/.sectool.config  --debug --wasscanstatus --wasconfigid $WASCONFIGID --wasscanid $WASSCANID --outfile wasscanstatus.txt
-python was_client.py --config ~/.sectool.config  --debug --outfile export.pdf --wasscanexport --wasconfigid $WASCONFIGID --wasscanid $WASSCANID --pprint
-python was_client.py --config ~/.sectool.config --debug --outfile export.json --wasscanexport --wasconfigid $WASCONFIGID --wasscanid $WASSCANID --pprint
-python was_client.py --config ~/.sectool.config --debug --outfile export.xml --wasscanexport --wasconfigid $WASCONFIGID --wasscanid $WASSCANID --pprint
-python was_client.py --config ~/.sectool.config --debug --outfile export.html --wasscanexport --wasconfigid $WASCONFIGID --wasscanid $WASSCANID --pprint
-python was_client.py --config ~/.sectool.config --debug --outfile export.csv --wasscanexport --wasconfigid $WASCONFIGID --wasscanid $WASSCANID --pprint
+pytenable_client tio --config ../../.sectool.config --noproxy - wasscans status $WASSCANID -- --prettyprint
 
-python was_client.py --config ~/.sectool.config  --debug --wastemplates --outfile templates.json
-python was_client.py --config ~/.sectool.config  --debug --wasusertemplates --outfile usertemplates.json
-python was_client.py --config ~/.sectool.config  --debug --wasusertemplatedetails --wasusertemplateid ttt-ttt-ttt --outfile usertemplatedetails.json
+# Export a scan to a file
+pytenable_client tio --config ../../.sectool.config --noproxy - wasscans export --filename export.json --wasscanid $WASSCANID
+pytenable_client tio --config ../../.sectool.config --noproxy --debug - wasscans export --filename export.pdf --wasscanid $WASSCANID
+pytenable_client tio --config ../../.sectool.config --noproxy --debug  - wasscans export --filename export.html --wasscanid $WASSCANID
+pytenable_client tio --config ../../.sectool.config --noproxy --debug  - wasscans export --filename export.csv --wasscanid $WASSCANID
+pytenable_client tio --config ../../.sectool.config --noproxy --debug  - wasscans export --filename export.xml --wasscanid $WASSCANID
 
-python was_client.py --config ~/.sectool.config  --debug --wasscanconfigdetails --wasconfigid $WASCONFIGID --outfile wasscandetails.json
-python was_client.py --config ~/.sectool.config  --debug --wasscanconfigcreate wasscandetails-configinput.json
-# Created abc-abc
-python was_client.py --config ~/.sectool.config  --debug --wasscanconfigupdate '{"description":"bla bla bla"}' --wasconfigid abc-abc
-python was_client.py --config ~/.sectool.config  --debug --wasscanconfigdelete  abc-abc --wasconfigid abc-abc
+# Get the list of templates
+pytenable_client tio --config ../../.sectool.config --noproxy --debug  - wasscans templateslist -- --outfile templates.json
+pytenable_client tio --config ../../.sectool.config --noproxy --debug  - wasscans usertemplateslist -- --outfile usertemplates.json
 
-python was_client.py --config ~/.sectool.config  --debug --wasscanhistory --wasconfigid $WASCONFIGID --outfile wasscanhistory.json
+# Get the details of a template
+pytenable_client tio --config ../../.sectool.config --noproxy --debug  - wasscans templatesdetails --template_id $TEMPLATEID -- --outfile templates-details.json
+pytenable_client tio --config ../../.sectool.config --noproxy --debug  - wasscans usertemplatesdetails --user_template_id $USERTEMPLATEID -- --outfile usertemplates-details.json
+
+# Get the details of a config
+pytenable_client tio --config ../../.sectool.config --noproxy --debug  - wasscans details --wasconfig_id $WASCONFIGID -- --outfile wasscan-details.json
+
+# Create a new tenable wasscan from json file
+pytenable_client tio --config ../../.sectool.config --noproxy --debug  - wasscans create --wasconfiguration=wasscan-details-input.json -- --prettyprint
+
+# Update configuration
+pytenable_client tio --config ../../.sectool.config --noproxy --debug  - wasscans configure --wasconfig_id $WASCONFIGID --wasconfiguration='{"description":"bla bla bla"}' -- --prettyprint
+
+# Delete a configuration
+pytenable_client tio --config ../../.sectool.config --noproxy --debug  - wasscans delete --wasconfig_id $WASCONFIGID
+
+# Get scan history
+pytenable_client tio --config ../../.sectool.config --noproxy --debug  - wasscans history --wasconfig_id $WASCONFIGID -- --outfile wasscan-history.json
+
+#  Get scan history details
+pytenable_client tio --config ../../.sectool.config --noproxy --debug  - wasscans results --wasscan_id $WASCONFIGID --  --outfile wasscan-result.json
 
 """
-
-
-def handle_result(args, results_table):
-    if args.outfile:
-        f = open(args.outfile, "w")
-        json.dump(results_table, f)
-        f.close()
-    if args.pprint:
-        pp(results_table)
-    try:
-        if args.debug:
-            print("[DEBUG] Number of records retrieved: %s" % len(results_table))
-    except:
-        pass
 
 
 def required_kw(config_kw):
@@ -97,25 +101,27 @@ def required_kw(config_kw):
 
 
 class tio(object):
-    def __init__(
-        self, config, noproxy=False, debug=False, prettyprint=False, outfile=None
-    ):
+    def __init__(self, config, noproxy=False, debug=False):
         self.__config = None
         self.proxies = None
         self.__tio = None
 
         self.debug = debug
         self.noproxy = noproxy
-        self.prettyprint = prettyprint
-        self.debug = debug
-        self.outfile = outfile
+        # set debugging context
+        if self.debug:
+            logging.basicConfig(level=logging.DEBUG)
+
         try:
             self.__config = ConfigParser()
             self.__config.read(config)
         except:
-            print("ConfigParser: Missing or error in configuration file")
+            logging.WARNING(
+                "ConfigParser: Missing or error in configuration file", exc_info=True
+            )
+
             if self.debug:
-                print("ConfigParser: Raise")
+                logging.debug("ConfigParser: Raise")
                 raise
             sys.exit(1)
         try:
@@ -128,8 +134,7 @@ class tio(object):
                 }
         except:
             self.proxies = None
-            if self.debug:
-                print("ConfigGet: Could not get proxy parameters")
+            logging.debug("ConfigGet: Could not get proxy parameters", exc_info=True)
         if self.__config.has_section("TENABLE"):
             if self.__config.has_section("PROXY") and not (noproxy):
                 self.__tio = TenableIO(
@@ -144,355 +149,302 @@ class tio(object):
                     self.__config.get("TENABLE", "TIO_SECRET_KEY"),
                     retries=1,
                 )
-            if self.debug:
-                print("[DEBUG] TIO initialized")
+            logging.debug("TIO initialized")
         else:
-            if self.debug:
-                print("[DEBUG] No TENABLE section in configuration file")
+            logging.debug("No TENABLE section in configuration file")
             sys.exit(-1)
-        self.wss = self.__tio.wasscans
-        self.wss.list = self.__wss_list
-        self.ss = self.__tio.scans
+        # self.wss = self.__tio.wasscans # WasScan interface
+        # self.wss.list = self.__wss_list
+        # self.vm = self.__tio.scans # Vulnerability Management interface
+        # self.users = self.__tio.users # Scan interface
+        # print("[INTERACTIVE] At ", lineno())
+        # Publish ALL subclasses
+        # t=self.__tio
+        for cls in dir(self.__tio):
+            logging.debug("Adding capability %s" % cls)
+            if not cls.startswith("_") and "tenable.io" in str(
+                eval("type(self._tio__tio.%s)" % cls)
+            ):
+                # code.interact(local=locals())
+                setattr(self, cls, eval("self._tio__tio.%s" % cls))
 
-    def __handle_result(self, results_table):
-        if self.outfile:
-            f = open(self.outfile, "w")
-            json.dump(results_table, f)
-            f.close()
-        if self.prettyprint:
-            pp(results_table)
+        # Overwrite some calls
+        if hasattr(self, "wasscans"):
+            if hasattr(self.wasscans, "list"):
+                self.wasscans.list = self.__wasscans_list
+            if hasattr(self.wasscans, "history"):
+                self.wasscans.history = self.__wasscans_history
+            if hasattr(self.wasscans, "export"):
+                self.wasscans.export = self.__wasscans_export
+            if hasattr(self.wasscans, "templateslist"):
+                self.wasscans.templateslist = self.__wasscans_templateslist
+            if hasattr(self.wasscans, "usertemplateslist"):
+                self.wasscans.usertemplateslist = self.__wasscans_usertemplateslist
+            if hasattr(self.wasscans, "create"):
+                self.wasscans.create = self.__wasscans_create
+            if hasattr(self.wasscans, "configure"):
+                self.wasscans.configure = self.__wasscans_configure
+
+        # code.interact(local=locals())
+
+    def __wasscans_configure(self, wasconfig_id, wasconfiguration):
+        config_kw = None
+
         try:
-            if self.debug:
-                print("[DEBUG] Number of records retrieved: %s" % len(results_table))
+            config_kw = json.loads(wasconfiguration)
         except:
-            pass
+            logging.debug("[DEBUG] Trying to load json from string failed.")
+        if not config_kw:
+            # check if this is a file
+            try:
+                f = open(wasconfiguration)
+                config_kw = json.load(f)
+                f.close()
+            except:
+                logging.debug("[DEBUG] Trying to load json from file failed.")
+                # logging.warning("Missing wasscanconfigcreate: it should be either a valid json object or file.")
+                config_kw = wasconfiguration
+        if config_kw:
+            # check for some key fields
+            result = self.__tio.wasscans.configure(
+                wasconfig_id=wasconfig_id, config_dict=config_kw
+            )
+            logging.info("[OK] Scan created with ID %s" % result)
+            return result
+        else:
+            logging.debug(
+                "Missing wasscanconfigcreate: it should be either a valid json object or file."
+            )
+        raise ValueError(
+            "configuration parameter should be a valid json string or path to a file containing a valid json."
+        )
 
-    # def listwasconfigs(self):
-    #     results = self.__tio.wasscans.list()
-    #     results_table = []
-    #     for i in results:
-    #         results_table.append(i)
-    #     self.__handle_result(results_table)
+    def __wasscans_create(self, wasconfiguration):
+        """
+        Create a new wasscan.
+        """
+        config_kw = None
+        try:
+            config_kw = json.loads(wasconfiguration)
+        except:
+            logging.debug("[DEBUG] Trying to load json from string failed.")
+        if not config_kw:
+            # check if this is a file
+            try:
+                f = open(wasconfiguration)
+                config_kw = json.load(f)
+                f.close()
+            except:
+                logging.debug("[DEBUG] Trying to load json from file failed.")
+                # logging.warning("Missing wasscanconfigcreate: it should be either a valid json object or file.")
 
-    def __wss_list(self, limit=None, offset=None, pages=None, sort=None):
+        if config_kw:
+            # check for some key fields
+            if required_kw(config_kw):
+                result = self.__tio.wasscans.create(config_dict=config_kw)
+                logging.info("[OK] Scan created with ID %s" % result)
+                return result
+        else:
+            logging.debug(
+                "Missing wasscanconfigcreate: it should be either a valid json object or file."
+            )
+        raise ValueError(
+            "configuration parameter should be a valid json string or path to a file containing a valid json."
+        )
+
+    def __wasscans_list(self, limit=None, offset=None, pages=None, sort=None):
+        """
+        Retrieve the list of configured wasscans.
+
+        :devportal:`wasscans: list <wasscans-list>`
+
+        Args:
+            limit (int, optional):
+                The number of records to retrieve.  Default is 50
+            offset (int, optional):
+                The starting record to retrieve.  Default is 0.
+            sort (tuple, optional):
+                A tuple of tuples identifying the the field and sort order of
+                the field.
+
+        Returns:
+            :obj:`WasScanConfigIterator`:
+                An iterator that handles the page management of the requested
+                records.
+
+        Examples:
+            >>> for scan in tio.wasscans.list():
+            ...     pprint(scan)
+        """
         results = self.__tio.wasscans.list(
             limit=limit, offset=offset, pages=pages, sort=sort
         )
         results_table = []
         for i in results:
             results_table.append(i)
-        self.__handle_result(results_table)
+        # self.__handle_result(results_table)
+        return results_table
 
-    # def create_wasscan_schedule(
-    #     self,
-    #     enabled=False,
-    #     frequency=None,
-    #     interval=None,
-    #     weekdays=None,
-    #     day_of_month=None,
-    #     starttime=None,
-    #     timezone=None,
-    # ):
-    #     return self.__tio.create_wasscan_schedule(
-    #         enabled=enabled,
-    #         frequency=frequency,
-    #         interval=interval,
-    #         weekdays=weekdays,
-    #         day_of_month=day_of_month,
-    #         starttime=starttime,
-    #         timezone=timezone,
-    #     )
+    def __wasscans_history(
+        self, wasconfig_id, limit=None, offset=None, pages=None, sort=None
+    ):
+        """
+        Get the scan history of a given wasscan from Tenable.io.
+
+        :devportal:`scans: history <scans-history>`
+
+        Args:
+            wasconfig_id (int or uuid):
+                The unique identifier for the scan.
+            limit (int, optional):
+                The number of records to retrieve.  Default is 50
+            offset (int, optional):
+                The starting record to retrieve.  Default is 0.
+            sort (tuple, optional):
+                A tuple of tuples identifying the the field and sort order of
+                the field.
+
+        Returns:
+            :obj:`ScanHistoryIterator`:
+                An iterator that handles the page management of the requested
+                records.
+
+        Examples:
+            >>> for history in tio.wasscans.history(1):
+            ...     pprint(history)
+        """
+        results = self.__tio.wasscans.history(
+            wasconfig_id=wasconfig_id,
+            limit=limit,
+            offset=offset,
+            pages=pages,
+            sort=sort,
+        )
+        results_table = []
+        for i in results:
+            results_table.append(i)
+        # self.__handle_result(results_table)
+        return results_table
+
+    def __wasscans_templateslist(self, limit=None, offset=None, pages=None, sort=None):
+        results = self.__tio.wasscans.templateslist(
+            limit=limit, offset=offset, pages=pages, sort=sort
+        )
+        results_table = []
+        for i in results:
+            results_table.append(i)
+        return results_table
+
+    def __wasscans_usertemplateslist(
+        self, limit=None, offset=None, pages=None, sort=None
+    ):
+        """
+        Returns a paginated list of user-defined templates that are available to be used for scan configurations.
+        """
+        results = self.__tio.wasscans.usertemplateslist(
+            limit=limit, offset=offset, pages=pages, sort=sort
+        )
+        results_table = []
+        for i in results:
+            results_table.append(i)
+        return results_table
+
+    def __wasscans_export(self, wasscanid, filename, format="application/json"):
+        """
+        Export the scan report.
+        """
+        if filename.endswith(".json"):
+            f = open(filename, "wb")
+            fo = self.__tio.wasscans.export(
+                wasscan_id=wasscanid, fobj=f, format="application/json"
+            )
+            f.close()
+        elif filename.endswith(".pdf"):
+            f = open(filename, "wb")
+            fo = self.__tio.wasscans.export(
+                wasscan_id=wasscanid, fobj=f, format="application/pdf"
+            )
+            f.close()
+        elif filename.endswith(".html") or filename.endswith(".htm"):
+            f = open(filename, "wb")
+            fo = self.__tio.wasscans.export(
+                wasscan_id=wasscanid, fobj=f, format="text/html"
+            )
+            f.close()
+        elif filename.endswith(".csv"):
+            f = open(filename, "wb")
+            fo = self.__tio.wasscans.export(
+                wasscan_id=wasscanid, fobj=f, format="text/csv"
+            )
+            f.close()
+        elif filename.endswith(".xml"):
+            f = open(filename, "wb")
+            fo = self.__tio.wasscans.export(
+                wasscan_id=wasscanid, fobj=f, format="text/xml"
+            )
+            f.close()
+        else:
+            logging.debug("[DEBUG] Outformat for file not recognised")
+            raise FileDownloadError(
+                msg="Output format not recognized",
+                filename=filename,
+                resource="__wasscan_export",
+                resource_id=wasscanid,
+            )
+        return "File saved: %s" % filename
 
 
-class bluewasscan(object):
-    def __init__(self, config, noproxy=False, debug=False):
-        self.__config = None
-        self.proxies = None
-        self.debug = False
-        # TenableIO
+def dontprint(result):
+    args = sys.argv[1:]
+    args, flag_args = parser.SeparateFlagArgs(args)
+    argparser = parser.CreateParser()
+    argparser.add_argument(
+        "--outfile",
+        "-o",
+    )
+    argparser.add_argument("--prettyprint", "-P", action="store_true")
+    argparser.add_argument("--console", action="store_true")
+    parsed_flag_args, unused_args = argparser.parse_known_args(flag_args)
+    debug = "--debug" in args
+    console = "--console" in flag_args
+
+    response = result
+    if parsed_flag_args.console:
+        print("[INTERACTIVE] At ", lineno())
+        code.interact(local=locals())
+    try:
+        response = json.dumps(result)
+        if parsed_flag_args.prettyprint:
+            response = pformat(result)
+        if hasattr(parsed_flag_args, "outfile"):
+            if parsed_flag_args.outfile.endswith(".json"):
+                f = open(parsed_flag_args.outfile, "w")
+                f.write(json.dumps(result))
+                f.close()
+            else:
+                f = open(parsed_flag_args.outfile, "w")
+                f.writelines(response)
+                f.close()
+            logging.debug("Saving to file %s" % parsed_flag_args.outfile)
+            response = ""
+    except:
+        if console:
+            print("[INTERACTIVE] At (except) ", lineno())
+            code.interact(local=locals())
+    return response
 
 
 def cli():
+    if "--debug" in sys.argv[1:]:
+        logging.basicConfig(level=logging.DEBUG)
+
     fire.Fire(
         {
             "tio": tio,
-        }
+        },
+        serialize=dontprint,
     )
 
 
 if __name__ == "__main__":
     cli()
-
-
-# if __name__ == "__main__":
-#     parser = argparse.ArgumentParser(description=description, epilog=epilog)
-#     parser.add_argument(
-#         "--outfile", type=str, default=None, help="Save result to file"
-#     )
-
-#     parser.add_argument(
-#         "--listwasconfigs", action="store_true", default=False, help="List all was configs"
-#     )
-#     parser.add_argument(
-#         "--wasscanconfigdetails", action="store_true", default=False, help="Retrive scan details"
-#     )
-#     parser.add_argument(
-#         "--wasscanconfigcreate", type=str, help="Create a scan based on json or file"
-#     )
-#     parser.add_argument(
-#         "--wasscanconfigupdate", type=str, help="Update a scan based on json or file"
-#     )
-#     parser.add_argument(
-#         "--wasscanconfigdelete", type=str, help="Delete a scan configuration based on json or file"
-#     )
-
-#     parser.add_argument(
-#         "--wasscanhistory", action="store_true", default=False, help="Retrive scan history for wasconfigid"
-#     )
-#     parser.add_argument(
-#         "--wastemplates", action="store_true", default=False, help="List all was templates"
-#     )
-#     parser.add_argument(
-#         "--wasusertemplates", action="store_true", default=False, help="List all was templates"
-#     )
-#     parser.add_argument(
-#         "--wasusertemplatedetails", action="store_true", default=False, help="Retrieves usertemplate details"
-#     )
-
-#     parser.add_argument(
-#         "--listwasscans", action="store_true", default=False, help="List all was scans"
-#     )
-#     parser.add_argument(
-#         "--wasscanresults", action="store_true", default=False, help="Retrieve results for a given wasscanid"
-#     )
-
-#     parser.add_argument(
-#         "--wasscanstatus", action="store_true", default=False, help="Retrive scan status"
-#     )
-#     parser.add_argument(
-#         "--wasscanlaunch", action="store_true", default=False, help="Launch a scan"
-#     )
-#     parser.add_argument(
-#         "--wasscanstop", action="store_true", default=False, help="Stop a running scan"
-#     )
-#     parser.add_argument(
-#         "--wasscandelete", type=str, help="Delete a scan based on json or file"
-#     )
-
-
-#     parser.add_argument(
-#         "--wasscanexport", action="store_true", default=False, help="Export a scan, requires outfile"
-#     )
-
-
-#     parser.add_argument(
-#         "--wasconfigid", type=str, default=False, help="WAS scan config_id"
-#     )
-#     parser.add_argument(
-#         "--wasscanid", type=str, default=False, help="WAS scan scan_id"
-#     )
-#     parser.add_argument(
-#         "--wasusertemplateid", type=str, default=False, help="WAS user template id"
-#     )
-
-#     # <refactor import="refactor/code_inspect_arguments.py">
-#     try:
-#         parser.add_argument(
-#             "--interactive",
-#             default=False,
-#             action="store_true",
-#             help="Launch a interactive shell at the end",
-#         )
-#     except:
-#         pass
-#     try:
-#         parser.add_argument(
-#             "--debug", action="store_true", default=False, help="debug level"
-#         )
-#     except:
-#         pass
-#     try:
-#         parser.add_argument(
-#             "--details", action="store_true", default=False, help="details of findings"
-#         )
-#     except:
-#         pass
-#     # </refactor>
-
-#     args = parser.parse_args()
-
-#     if args.listwasconfigs:
-#         results = tio.wasscans.list()
-#         results_table = []
-#         for i in results:
-#             results_table.append(i)
-#         handle_result(args, results_table)
-#     elif args.wastemplates:
-#         results = tio.wasscans.templateslist()
-#         results_table = []
-#         for i in results:
-#             results_table.append(i)
-#         handle_result(args, results_table)
-#     elif args.wasusertemplates:
-#         results = tio.wasscans.usertemplateslist()
-#         results_table = []
-#         for i in results:
-#             results_table.append(i)
-#         handle_result(args, results_table)
-#     elif args.wasusertemplatedetails and args.wasusertemplateid:
-#         result = tio.wasscans.usertemplatesdetails(user_template_id=args.wasusertemplateid)
-#         handle_result(args, result)
-#     elif args.listwasscans and args.wasconfigid:
-#         results = tio.wasscans.history(wasscan_id=args.wasconfigid)
-#         results_table = []
-#         for i in results:
-#             results_table.append(i)
-#         handle_result(args, results_table)
-#     elif args.wasscanstatus and args.wasscanid:
-#         result = tio.wasscans.status(wasscan_id=args.wasscanid)
-#         handle_result(args, result)
-#     elif args.wasscanlaunch:
-#         if args.wasconfigid:
-#             result = tio.wasscans.launch(wasconfig_id=args.wasconfigid)
-#             handle_result(args, result)
-#         else:
-#             print("Missing WAS scan config id, use --wasconfigid xxx-xxx-xxx")
-#             global_error = 1
-#     elif args.wasscanstop:
-#         if args.wasscanid:
-#             result = tio.wasscans.stop(wasscan_id=args.wasscanid)
-#             handle_result(args, result)
-#         else:
-#             print("Missing WAS scan id, use --wasscanid xxx-xxx-xxx")
-#             global_error = 1
-#     elif args.wasscanconfigdetails:
-#         if args.wasconfigid:
-#             result = tio.wasscans.details(wasscan_id=args.wasconfigid)
-#             handle_result(args, result)
-#         else:
-#             print("Missing WAS scan config id, use --wasconfigid xxx-xxx-xxx")
-#             global_error = 1
-#     elif args.wasscanexport and args.wasscanid and args.outfile:
-#         if args.outfile.endswith('.json'):
-#             f=open(args.outfile,'wb')
-#             fo=tio.wasscans.export(wasscan_id=args.wasscanid, fobj=f, format='application/json')
-#             f.close()
-#         elif args.outfile.endswith('.pdf'):
-#             f=open(args.outfile,'wb')
-#             fo=tio.wasscans.export(wasscan_id=args.wasscanid, fobj=f, format='application/pdf')
-#             f.close()
-#         elif args.outfile.endswith('.html') or args.outfile.endswith('.htm'):
-#             f=open(args.outfile,'wb')
-#             fo=tio.wasscans.export(wasscan_id=args.wasscanid, fobj=f, format='text/html')
-#             f.close()
-#         elif args.outfile.endswith('.csv'):
-#             f=open(args.outfile,'wb')
-#             fo=tio.wasscans.export(wasscan_id=args.wasscanid, fobj=f, format='text/csv')
-#             f.close()
-#         elif args.outfile.endswith('.xml'):
-#             f=open(args.outfile,'wb')
-#             fo=tio.wasscans.export(wasscan_id=args.wasscanid, fobj=f, format='text/xml')
-#             f.close()
-#         else:
-#             if args.debug:
-#                 print("[DEBUG] Outformat for file not recognised")
-#     elif args.wasscanconfigcreate:
-#         config_kw = None
-#         try:
-#             config_kw=json.loads(args.wasscanconfigcreate)
-#         except:
-#             if args.debug:
-#                 print("[DEBUG] Trying to load json from string failed.")
-#         if not config_kw:
-#             # check if this is a file
-#             try:
-#                 f=open(args.wasscanconfigcreate)
-#                 config_kw=json.load(f)
-#                 f.close()
-#             except:
-#                 if args.debug:
-#                     print("[DEBUG] Trying to load json from file failed.")
-#                 print("Missing wasscanconfigcreate: it should be either a valid json object or file.")
-#                 global_error=2
-#         if config_kw:
-#                 # check for some key fields
-#                 if required_kw(config_kw):
-#                     result = tio.wasscans.create(config_dict=config_kw)
-#                     print("[OK] Scan created with ID %s" % result)
-#                     pass
-#         else:
-#             print("Missing wasscanconfigcreate: it should be either a valid json object or file.")
-#             global_error=2
-#     elif args.wasscanconfigupdate:
-#         if args.wasconfigid:
-#             config_kw = None
-#             try:
-#                 config_kw=json.loads(args.wasscanconfigupdate)
-#             except:
-#                 if args.debug:
-#                     print("[DEBUG] Trying to load json from string failed.")
-#             if not config_kw:
-#                 # check if this is a file
-#                 try:
-#                     f=open(args.wasscanconfigupdate)
-#                     config_kw=json.load(f)
-#                     f.close()
-#                 except:
-#                     if args.debug:
-#                         print("[DEBUG] Trying to load json from file failed.")
-#                     print("Missing wasscanconfigupdate: it should be either a valid json object or file.")
-#                     global_error=2
-#             if config_kw:
-#                     result = tio.wasscans.configure(wasconfig_id=args.wasconfigid, config_dict=config_kw)
-#                     print("[OK] Scan updated with ID %s" % args.wasconfigid)
-#                     if args.debug:
-#                         pp(result)
-#             else:
-#                 print("Missing wasscanconfigupdate: it should be either a valid json object or file.")
-#                 global_error=2
-#         else:
-#             print("Missing WAS scan config id, for update action please provide --wasconfigid xxx-xxx-xxx")
-#             global_error = 1
-#     elif args.wasscanconfigdelete:
-#         if args.wasconfigid and args.wasscanconfigdelete==args.wasconfigid:
-#             result = tio.wasscans.delete(wasconfig_id=args.wasconfigid)
-#             handle_result(args, result)
-#         else:
-#             print("Missing WAS scan config id, for delete action please have both --wasconfigid xxx-xxx-xxx and --wasscanconfigdelete xxxx-xxx set to the same")
-#             global_error = 1
-#     elif args.wasscandelete:
-#         if args.wasscanid and args.wasscandelete==args.wasscanid:
-#             result = tio.wasscans.delete(wasscan_id=args.wasscanid)
-#             handle_result(args, result)
-#         else:
-#             print("Missing WAS scan id, for delete action please have both --wasscanid xxx-xxx-xxx and --wasscandelete xxxx-xxx set to the same")
-#             global_error = 1
-#     # tio.wasscans.results
-#     elif args.wasscanresults:
-#         if args.wasscanid :
-#             result = tio.wasscans.results(wasscan_id=args.wasscanid)
-#             handle_result(args, result)
-#         else:
-#             print("Missing WAS scan id, for results action please have --wasscanid xxx-xxx-xxx")
-#             global_error = 1
-
-#     # tio.wasscans.history
-#     elif args.wasscanhistory:
-#         if args.wasconfigid:
-#             results = tio.wasscans.history(wasconfig_id=args.wasconfigid)
-#             results_table = []
-#             for i in results:
-#                 results_table.append(i)
-#             handle_result(args, results_table)
-#         else:
-#             print("Missing WAS scan config id, for history action please provide --wasconfigid xxx-xxx-xxx")
-#             global_error = 1
-
-# # <refactor import="refactor/code_inspect_end.py">
-#     if args.interactive:
-#         print("[INTERACTIVE] At ", lineno())
-#         code.interact(local=locals())
-#     if args.debug:
-#         print("Exit code: ", global_error)
-#     sys.exit(global_error)
-# # </refactor>

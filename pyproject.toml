@@ -1,16 +1,18 @@
 [tool.poetry]
 name = "pyTenable-client"
-version = "0.1.0"
+version = "0.2.0"
 description = ""
 authors = ["seb <seb@barbich.net>"]
 
 [tool.poetry.dependencies]
 python = "^3.10"
-tenable = {url = "https://github.com/barbich/pyTenable/releases/download/1.4.7was1/tenable-1.4.7.1-py3-none-any.whl"}
-fire = "^0.4.0"
+fire = {url = "https://github.com/barbich/python-fire/releases/download/20220908/fire-0.4.0.post20220908-py2.py3-none-any.whl"}
+pytenable = {url = "https://github.com/barbich/pyTenable/releases/download/1.4.7.1-beta.1/pyTenable-1.4.7.1-py3-none-any.whl"}
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"
+fire = {url = "https://github.com/barbich/python-fire/releases/download/20220908/fire-0.4.0.post20220908-py2.py3-none-any.whl"}
+pytenable = {url = "https://github.com/barbich/pyTenable/releases/download/1.4.7.1-beta.1/pyTenable-1.4.7.1-py3-none-any.whl"}
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
